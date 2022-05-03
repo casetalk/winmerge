@@ -134,7 +134,9 @@ begin
     end;
 
   except
-  end;
+  end
+  else
+    result := True;
 end;
 
 initialization
