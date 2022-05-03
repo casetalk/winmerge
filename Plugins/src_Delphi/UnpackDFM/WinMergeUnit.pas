@@ -7,6 +7,8 @@ uses
 
 type
   TWinMergeScript = class(TAutoObject, IWinMergeScript)
+  private
+    function isFileBinary(aFile: string): boolean;
   protected
     function Get_PluginDescription : WideString; safecall;
     function Get_PluginEvent : WideString; safecall;
@@ -43,6 +45,28 @@ begin
   result := true;
 end;
 
+function TWinMergeScript.isFileBinary(aFile: string): boolean;
+const
+  FilerSignature = integer($30465054);           // 'TPF0'
+  ResSignature = integer($00000AFF);             // FF 04 00
+var
+  src: TFileStream;
+  dst: TFileStream;
+  Signature: Integer;
+begin
+  Result := False;
+
+  src := TFileStream.Create(aFile, fmOpenRead);
+  try
+    //if (TestStreamFormat(src) = sofBinary) then begin
+    src.Read(Signature, SizeOf(Signature));
+    if (Signature = FilerSignature) or (Signature and $00FFFFFF = ResSignature) then
+      Result := True;
+  finally
+    FreeAndNil(src);
+  end;
+end;
+
 // ------------------------------------------------------------------
 // Converts the text version of a DFM to the binary version.
 // ------------------------------------------------------------------
@@ -51,14 +75,18 @@ function TWinMergeScript.PackFile(const fileSrc, fileDst : WideString;
 var
   src : TFileStream;
   dst : TFileStream;
+  bin: boolean;
 begin
   try
-
+    bin := isFileBinary(fileDst);
     src := TFileStream.Create(fileSrc, fmOpenRead);
     try
       dst := TFileStream.Create(fileDst, fmCreate);
       try
-        ObjectTextToResource(src, dst);
+        if (bin) then
+          ObjectTextToResource(src, dst)
+        else
+          dst.CopyFrom(src);
       finally
         dst.Free;
       end;
@@ -81,9 +109,6 @@ end;
 // ------------------------------------------------------------------
 function TWinMergeScript.UnpackFile(const fileSrc, fileDst : WideString;
   var pChanged : WordBool; var pSubcode : Integer) : WordBool;
-const
-  FilerSignature = integer($30465054);           // 'TPF0'
-  ResSignature = integer($00000AFF);             // FF 04 00
 var
   src: TFileStream;
   dst: TFileStream;
@@ -91,21 +116,17 @@ var
 begin
   result := false;
   pChanged := false;
-  try
 
+  if isFileBinary(fileSrc) then
+  try
     src := TFileStream.Create(fileSrc, fmOpenRead);
     try
-      //if (TestStreamFormat(src) = sofBinary) then begin
-      src.Read(Signature, SizeOf(Signature));
-      if (Signature = FilerSignature) or (Signature and $00FFFFFF = ResSignature) then begin
-        src.Seek(0, soFromBeginning);
-        dst := TFileStream.Create(fileDst, fmCreate);
-        try
-          ObjectResourceToText(src, dst);
-          pChanged := true;
-        finally
-          dst.Free;
-        end;
+      dst := TFileStream.Create(fileDst, fmCreate);
+      try
+        ObjectResourceToText(src, dst);
+        pChanged := true;
+      finally
+        dst.Free;
       end;
       result := true;
     finally
